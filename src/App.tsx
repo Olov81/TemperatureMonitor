@@ -36,6 +36,55 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [stationInfo, setStationInfo] = useState<Station | null>(null);
   const [seasonInfo, setSeasonInfo] = useState<{ season: string; message: string }>({ season: 'unknown', message: '' });
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [usingCachedData, setUsingCachedData] = useState(false);
+
+  // Cache management constants
+  const CACHE_KEY = 'temperatureData';
+  const CACHE_DURATION_MS = 55 * 60 * 1000; // 55 minutes (slightly less than 1 hour for safety)
+
+  // Function to check if cached data is still valid
+  const isCacheValid = (timestamp: number): boolean => {
+    const now = Date.now();
+    return (now - timestamp) < CACHE_DURATION_MS;
+  };
+
+  // Function to save data to cache
+  const saveToCache = (data: any, stationInfo: any) => {
+    const cacheData = {
+      data,
+      stationInfo,
+      timestamp: Date.now(),
+    };
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      console.log('📦 Data saved to cache');
+    } catch (error) {
+      console.warn('Failed to save to cache:', error);
+    }
+  };
+
+  // Function to load data from cache
+  const loadFromCache = (): { data: any; stationInfo: any; timestamp: number } | null => {
+    try {
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      if (!cachedData) return null;
+      
+      const parsed = JSON.parse(cachedData);
+      if (!parsed.timestamp || !isCacheValid(parsed.timestamp)) {
+        console.log('🗑️ Cache expired, removing old data');
+        localStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      
+      console.log('⚡ Using cached data from', new Date(parsed.timestamp).toLocaleString());
+      return parsed;
+    } catch (error) {
+      console.warn('Failed to load from cache:', error);
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+  };
 
   // Function to convert API data to chart format
   const convertApiDataToChartData = (apiData: TemperatureDataPoint[]): ChartData[] => {
@@ -114,50 +163,73 @@ const App: React.FC = () => {
   };
 
   // Function to fetch temperature data from the real API
-  const fetchTemperatureData = async () => {
+  const fetchTemperatureData = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+    setUsingCachedData(false);
     
     try {
-      // Use CORS proxy for production deployment
-      const corsProxy = 'https://api.allorigins.win/get?url=';
-      const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
-      const proxyUrl = corsProxy + encodeURIComponent(apiUrl);
+      // First check local cache unless force refresh is requested
+      if (!forceRefresh) {
+        const cachedData = loadFromCache();
+        if (cachedData) {
+          console.log('📱 Using local cached data to save API quota');
+          setStationInfo(cachedData.stationInfo);
+          const chartData = convertApiDataToChartData(cachedData.data);
+          setData(chartData);
+          setMovingAverageData(calculateMovingAverage(chartData, 6));
+          setSeasonInfo(detectSeason(chartData));
+          setLastUpdated(new Date(cachedData.timestamp));
+          setUsingCachedData(true);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Use Netlify Function for server-side caching
+      const isProduction = window.location.hostname !== 'localhost';
+      const functionUrl = isProduction 
+        ? '/.netlify/functions/temperature'
+        : 'http://localhost:8888/.netlify/functions/temperature';
       
-      console.log('🌐 Fetching from API via CORS proxy...');
+      console.log('🌐 Fetching from Netlify Function:', functionUrl);
       
-      // Try to fetch from the API via CORS proxy
-      const response = await axios.get(proxyUrl, {
-        timeout: 15000, // 15 second timeout for proxy
+      // Fetch from our Netlify Function (which handles caching server-side)
+      const response = await axios.get(functionUrl, {
+        timeout: 15000, // 15 second timeout
       });
       
-      let apiData;
-      // Handle CORS proxy response format
-      if (response.data.contents) {
-        try {
-          apiData = JSON.parse(response.data.contents);
-        } catch (parseError) {
-          throw new Error('Failed to parse API response');
-        }
-      } else {
-        apiData = response.data;
+      // Handle Netlify Function response format
+      const functionResponse = response.data;
+      
+      if (!functionResponse.success) {
+        throw new Error(functionResponse.error || 'Function returned error');
       }
       
-      if (apiData.stations && apiData.stations.length > 0) {
-        const station = apiData.stations[0]; // Use the first station
+      if (functionResponse.stations && functionResponse.stations.length > 0) {
+        const station = functionResponse.stations[0]; // Use the first station
+        
+        // Save fresh data to local cache (as backup)
+        saveToCache(station.data, station);
+        
         setStationInfo(station);
         const chartData = convertApiDataToChartData(station.data);
         setData(chartData);
         
-        // Calculate 24-hour moving average
-        const movingAvg = calculateMovingAverage(chartData, 24);
+        // Calculate 6-hour moving average for smoother line
+        const movingAvg = calculateMovingAverage(chartData, 6);
         setMovingAverageData(movingAvg);
         
         // Detect current season
         const currentSeason = detectSeason(movingAvg);
         setSeasonInfo(currentSeason);
         
-        console.log('✅ Successfully loaded temperature data from API');
+        // Update timestamp for fresh data
+        setLastUpdated(new Date(functionResponse.timestamp));
+        setUsingCachedData(functionResponse.cached);
+        
+        const cacheType = functionResponse.cached ? 'server-cached' : 'fresh';
+        console.log(`✅ Successfully loaded ${cacheType} temperature data from Netlify Function`);
       } else {
         setError('No temperature data available from the API');
       }
@@ -229,13 +301,32 @@ const App: React.FC = () => {
         
         <div className="controls">
           <button 
-            onClick={fetchTemperatureData} 
+            onClick={() => fetchTemperatureData(true)} 
             disabled={loading}
             className="refresh-button"
           >
             {loading ? 'Loading...' : 'Refresh Data'}
           </button>
         </div>
+
+        {/* Cache status and last updated info */}
+        {lastUpdated && (
+          <div className="cache-status">
+            {usingCachedData && (
+              <span className="cache-indicator">
+                🌍 Using server-cached data (shared by all users - saves API quota)
+              </span>
+            )}
+            <span className="last-updated">
+              Last updated: {lastUpdated.toLocaleString()}
+            </span>
+            {usingCachedData && (
+              <span className="cache-info">
+                Server refreshes data every 55 minutes automatically
+              </span>
+            )}
+          </div>
+        )}
         
         {error && (
           <div className="error-message">

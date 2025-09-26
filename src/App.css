@@ -112,6 +112,35 @@ html, body {
   cursor: not-allowed;
 }
 
+.cache-status {
+  margin: 15px 0;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.cache-indicator {
+  display: block;
+  color: #28a745;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.last-updated {
+  display: block;
+  color: #6c757d;
+  margin-bottom: 3px;
+}
+
+.cache-info {
+  display: block;
+  color: #007bff;
+  font-size: 13px;
+}
+
 .error-message {
   background-color: #f8d7da;
   color: #721c24;
