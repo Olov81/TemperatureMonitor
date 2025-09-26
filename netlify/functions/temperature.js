@@ -1,5 +1,3 @@
-const https = require('https');
-
 // In-memory cache (persists during function lifetime)
 let cache = {
   data: null,
@@ -17,29 +15,67 @@ function isCacheValid() {
 }
 
 // Function to fetch data from temperatur.nu API
-function fetchTemperatureData() {
-  return new Promise((resolve, reject) => {
+async function fetchTemperatureData() {
+  try {
+    // For Netlify Functions, we need to use a different approach for HTTP requests
+    const https = require('https');
+    const url = require('url');
+    
     const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
     
-    https.get(apiUrl, (res) => {
-      let data = '';
+    return new Promise((resolve, reject) => {
+      // Parse URL to determine if we need http or https
+      const parsedUrl = url.parse(apiUrl);
+      const requestModule = parsedUrl.protocol === 'https:' ? require('https') : require('http');
       
-      res.on('data', (chunk) => {
-        data += chunk;
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port,
+        path: parsedUrl.path,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'TemperatureMonitor/1.0',
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      };
+      
+      const req = requestModule.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const jsonData = JSON.parse(data);
+            resolve(jsonData);
+          } catch (parseError) {
+            console.error('JSON parse error:', parseError);
+            reject(new Error('Failed to parse API response'));
+          }
+        });
       });
       
-      res.on('end', () => {
-        try {
-          const jsonData = JSON.parse(data);
-          resolve(jsonData);
-        } catch (error) {
-          reject(new Error('Failed to parse API response'));
-        }
+      req.on('error', (error) => {
+        console.error('Request error:', error);
+        reject(error);
       });
-    }).on('error', (error) => {
-      reject(error);
+      
+      req.on('timeout', () => {
+        console.error('Request timeout');
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+      
+      req.end();
     });
-  });
+    
+  } catch (error) {
+    console.error('API fetch error:', error);
+    throw error;
+  }
 }
 
 exports.handler = async (event, context) => {
