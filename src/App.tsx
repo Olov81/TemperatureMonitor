@@ -119,13 +119,32 @@ const App: React.FC = () => {
     setError(null);
     
     try {
-      // Try to fetch from the API
-      const response = await axios.get<ApiResponse>('http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data', {
-        timeout: 10000, // 10 second timeout
+      // Use CORS proxy for production deployment
+      const corsProxy = 'https://api.allorigins.win/get?url=';
+      const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
+      const proxyUrl = corsProxy + encodeURIComponent(apiUrl);
+      
+      console.log('🌐 Fetching from API via CORS proxy...');
+      
+      // Try to fetch from the API via CORS proxy
+      const response = await axios.get(proxyUrl, {
+        timeout: 15000, // 15 second timeout for proxy
       });
       
-      if (response.data.stations && response.data.stations.length > 0) {
-        const station = response.data.stations[0]; // Use the first station
+      let apiData;
+      // Handle CORS proxy response format
+      if (response.data.contents) {
+        try {
+          apiData = JSON.parse(response.data.contents);
+        } catch (parseError) {
+          throw new Error('Failed to parse API response');
+        }
+      } else {
+        apiData = response.data;
+      }
+      
+      if (apiData.stations && apiData.stations.length > 0) {
+        const station = apiData.stations[0]; // Use the first station
         setStationInfo(station);
         const chartData = convertApiDataToChartData(station.data);
         setData(chartData);
@@ -137,6 +156,8 @@ const App: React.FC = () => {
         // Detect current season
         const currentSeason = detectSeason(movingAvg);
         setSeasonInfo(currentSeason);
+        
+        console.log('✅ Successfully loaded temperature data from API');
       } else {
         setError('No temperature data available from the API');
       }
@@ -163,10 +184,10 @@ const App: React.FC = () => {
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
           
-          setError('Using sample data (API unavailable - this might be due to CORS restrictions in the browser)');
+          setError('Using sample data (API temporarily unavailable)');
         }
       } catch (fallbackErr) {
-        setError('Failed to fetch temperature data. Please check your internet connection or try running the app from a server.');
+        setError('Failed to fetch temperature data. Please try refreshing the page.');
       }
     } finally {
       setLoading(false);

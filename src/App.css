@@ -154,21 +154,27 @@
   .charts-container {
     grid-template-columns: 1fr;
     gap: 25px;
+    margin: 20px 0;
   }
   
   .App {
     padding: 0.5rem;
+    max-width: 100%;
   }
   
   .chart-container {
     margin: 15px 0;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
 
 @media (max-width: 768px) {
   .App {
     padding: 0.25rem;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   
   .App-header {
@@ -177,6 +183,24 @@
   
   .station-info h2 {
     font-size: 1.3em;
+  }
+  
+  .charts-container {
+    gap: 20px;
+    margin: 15px 0;
+    grid-template-columns: 1fr;
+  }
+  
+  .chart-container {
+    margin: 10px 0;
+    padding: 15px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  
+  .chart-container .recharts-wrapper {
+    width: 100% !important;
+    height: auto !important;
   }
   
   .season-announcement {
