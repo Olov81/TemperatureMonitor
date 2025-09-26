@@ -141,6 +141,13 @@ html, body {
   font-size: 13px;
 }
 
+.dev-info {
+  display: block;
+  color: #fd7e14;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .error-message {
   background-color: #f8d7da;
   color: #721c24;

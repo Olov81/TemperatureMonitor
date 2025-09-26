@@ -186,52 +186,97 @@ const App: React.FC = () => {
         }
       }
 
-      // Use Netlify Function for server-side caching
+      // Use Netlify Function for server-side caching in production, fallback to direct API locally
       const isProduction = window.location.hostname !== 'localhost';
-      const functionUrl = isProduction 
-        ? '/.netlify/functions/temperature'
-        : 'http://localhost:8888/.netlify/functions/temperature';
       
-      console.log('🌐 Fetching from Netlify Function:', functionUrl);
+      let response;
       
-      // Fetch from our Netlify Function (which handles caching server-side)
-      const response = await axios.get(functionUrl, {
-        timeout: 15000, // 15 second timeout
-      });
-      
-      // Handle Netlify Function response format
-      const functionResponse = response.data;
-      
-      if (!functionResponse.success) {
-        throw new Error(functionResponse.error || 'Function returned error');
-      }
-      
-      if (functionResponse.stations && functionResponse.stations.length > 0) {
-        const station = functionResponse.stations[0]; // Use the first station
+      if (isProduction) {
+        // Production: Use Netlify Function
+        const functionUrl = '/.netlify/functions/temperature';
+        console.log('🌐 Fetching from Netlify Function:', functionUrl);
         
-        // Save fresh data to local cache (as backup)
-        saveToCache(station.data, station);
+        response = await axios.get(functionUrl, {
+          timeout: 15000,
+        });
         
-        setStationInfo(station);
-        const chartData = convertApiDataToChartData(station.data);
-        setData(chartData);
+        // Handle Netlify Function response format
+        const functionResponse = response.data;
         
-        // Calculate 6-hour moving average for smoother line
-        const movingAvg = calculateMovingAverage(chartData, 6);
-        setMovingAverageData(movingAvg);
+        if (!functionResponse.success) {
+          throw new Error(functionResponse.error || 'Function returned error');
+        }
         
-        // Detect current season
-        const currentSeason = detectSeason(movingAvg);
-        setSeasonInfo(currentSeason);
-        
-        // Update timestamp for fresh data
-        setLastUpdated(new Date(functionResponse.timestamp));
-        setUsingCachedData(functionResponse.cached);
-        
-        const cacheType = functionResponse.cached ? 'server-cached' : 'fresh';
-        console.log(`✅ Successfully loaded ${cacheType} temperature data from Netlify Function`);
+        if (functionResponse.stations && functionResponse.stations.length > 0) {
+          const station = functionResponse.stations[0];
+          
+          // Save to local cache as backup
+          saveToCache(station.data, station);
+          
+          setStationInfo(station);
+          const chartData = convertApiDataToChartData(station.data);
+          setData(chartData);
+          
+          const movingAvg = calculateMovingAverage(chartData, 6);
+          setMovingAverageData(movingAvg);
+          
+          const currentSeason = detectSeason(movingAvg);
+          setSeasonInfo(currentSeason);
+          
+          setLastUpdated(new Date(functionResponse.timestamp));
+          setUsingCachedData(functionResponse.cached);
+          
+          console.log(`✅ Successfully loaded ${functionResponse.cached ? 'server-cached' : 'fresh'} data from Netlify Function`);
+        } else {
+          setError('No temperature data available from the function');
+        }
       } else {
-        setError('No temperature data available from the API');
+        // Local development: Use direct API call with CORS proxy
+        const corsProxy = 'https://api.allorigins.win/get?url=';
+        const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
+        const proxyUrl = corsProxy + encodeURIComponent(apiUrl);
+        
+        console.log('🔧 Local development: Fetching from API via CORS proxy...');
+        
+        response = await axios.get(proxyUrl, {
+          timeout: 15000,
+        });
+        
+        let apiData;
+        // Handle CORS proxy response format
+        if (response.data.contents) {
+          try {
+            apiData = JSON.parse(response.data.contents);
+          } catch (parseError) {
+            throw new Error('Failed to parse API response');
+          }
+        } else {
+          apiData = response.data;
+        }
+        
+        if (apiData.stations && apiData.stations.length > 0) {
+          const station = apiData.stations[0];
+          
+          // Save to local cache
+          saveToCache(station.data, station);
+          
+          setStationInfo(station);
+          const chartData = convertApiDataToChartData(station.data);
+          setData(chartData);
+          
+          const movingAvg = calculateMovingAverage(chartData, 6);
+          setMovingAverageData(movingAvg);
+          
+          const currentSeason = detectSeason(movingAvg);
+          setSeasonInfo(currentSeason);
+          
+          setLastUpdated(new Date());
+          setUsingCachedData(false);
+          
+          console.log('✅ Successfully loaded fresh data from direct API (local development)');
+        } else {
+          setError('No temperature data available from the API');
+        }
       }
       
     } catch (err) {
@@ -314,15 +359,22 @@ const App: React.FC = () => {
           <div className="cache-status">
             {usingCachedData && (
               <span className="cache-indicator">
-                🌍 Using server-cached data (shared by all users - saves API quota)
+                {window.location.hostname === 'localhost' 
+                  ? '📱 Using local browser cache'
+                  : '🌍 Using server-cached data (shared by all users - saves API quota)'}
               </span>
             )}
             <span className="last-updated">
               Last updated: {lastUpdated.toLocaleString()}
             </span>
-            {usingCachedData && (
+            {usingCachedData && window.location.hostname !== 'localhost' && (
               <span className="cache-info">
                 Server refreshes data every 55 minutes automatically
+              </span>
+            )}
+            {window.location.hostname === 'localhost' && (
+              <span className="dev-info">
+                🔧 Local development mode - fetching directly from API
               </span>
             )}
           </div>
