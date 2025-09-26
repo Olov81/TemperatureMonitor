@@ -247,13 +247,13 @@ const App: React.FC = () => {
           <div className="chart-container">
             <h3>Hourly Temperature Data</h3>
             {data.length > 0 ? (
-              <ResponsiveContainer width="100%" height={350}>
+              <ResponsiveContainer width="100%" height={350} minWidth={300}>
                 <LineChart
                   data={data}
                   margin={{
                     top: 5,
-                    right: 30,
-                    left: 20,
+                    right: 20,
+                    left: 10,
                     bottom: 5,
                   }}
                 >
@@ -299,13 +299,13 @@ const App: React.FC = () => {
           <div className="chart-container">
             <h3>24-Hour Moving Average</h3>
             {movingAverageData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={350}>
+              <ResponsiveContainer width="100%" height={350} minWidth={300}>
                 <LineChart
                   data={movingAverageData}
                   margin={{
                     top: 5,
-                    right: 30,
-                    left: 20,
+                    right: 20,
+                    left: 10,
                     bottom: 5,
                   }}
                 >
