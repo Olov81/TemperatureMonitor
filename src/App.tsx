@@ -39,6 +39,42 @@ const App: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [usingCachedData, setUsingCachedData] = useState(false);
 
+  // Custom tooltip component
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload; // Get the full data point
+      const fullDate = new Date(data.datetime);
+      const formattedDateTime = fullDate.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      // Determine if this is the moving average chart or raw data
+      const isMovingAverage = payload[0].name?.includes('Moving Average');
+      
+      return (
+        <div style={{
+          backgroundColor: '#f8f9fa',
+          border: '1px solid #dee2e6',
+          borderRadius: '6px',
+          padding: '10px',
+          fontSize: '14px'
+        }}>
+          <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: '#495057' }}>
+            📅 {formattedDateTime}
+          </p>
+          <p style={{ margin: '0', color: payload[0].color }}>
+            🌡️ {isMovingAverage ? '24h Moving Average' : 'Temperature'}: {payload[0].value.toFixed(1)}°C
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   // Cache management constants
   const CACHE_KEY = 'temperatureData';
   const CACHE_DURATION_MS = 55 * 60 * 1000; // 55 minutes (slightly less than 1 hour for safety)
@@ -99,14 +135,14 @@ const App: React.FC = () => {
     });
   };
 
-  // Function to calculate 24-hour moving average
+  // Function to calculate 24-hour trailing moving average
   const calculateMovingAverage = (data: ChartData[], windowSize: number = 24): ChartData[] => {
     return data.map((point, index) => {
-      // Calculate the range for the moving average window
-      const start = Math.max(0, index - Math.floor(windowSize / 2));
-      const end = Math.min(data.length, index + Math.ceil(windowSize / 2));
+      // Use trailing window: take the current point and the previous (windowSize-1) points
+      const start = Math.max(0, index - windowSize + 1);
+      const end = index + 1;
       
-      // Get the values in the window
+      // Get the values in the trailing window
       const windowData = data.slice(start, end);
       
       // Calculate average
@@ -177,7 +213,7 @@ const App: React.FC = () => {
           setStationInfo(cachedData.stationInfo);
           const chartData = convertApiDataToChartData(cachedData.data);
           setData(chartData);
-          setMovingAverageData(calculateMovingAverage(chartData, 6));
+          setMovingAverageData(calculateMovingAverage(chartData, 24));
           setSeasonInfo(detectSeason(chartData));
           setLastUpdated(new Date(cachedData.timestamp));
           setUsingCachedData(true);
@@ -217,7 +253,7 @@ const App: React.FC = () => {
           const chartData = convertApiDataToChartData(station.data);
           setData(chartData);
           
-          const movingAvg = calculateMovingAverage(chartData, 6);
+          const movingAvg = calculateMovingAverage(chartData, 24);
           setMovingAverageData(movingAvg);
           
           const currentSeason = detectSeason(movingAvg);
@@ -264,7 +300,7 @@ const App: React.FC = () => {
           const chartData = convertApiDataToChartData(station.data);
           setData(chartData);
           
-          const movingAvg = calculateMovingAverage(chartData, 6);
+          const movingAvg = calculateMovingAverage(chartData, 24);
           setMovingAverageData(movingAvg);
           
           const currentSeason = detectSeason(movingAvg);
@@ -411,13 +447,7 @@ const App: React.FC = () => {
                     tick={{ fontSize: 12 }}
                     domain={['dataMin - 2', 'dataMax + 2']}
                   />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value}°C`, 'Temperature']}
-                    labelFormatter={(label: string) => {
-                      const dataPoint = data.find(d => d.date === label);
-                      return dataPoint ? `${dataPoint.date} at ${dataPoint.time}` : label;
-                    }}
-                  />
+                  <Tooltip content={<CustomTooltip />} />
                   <Legend />
                   <Line 
                     type="monotone" 
@@ -463,13 +493,7 @@ const App: React.FC = () => {
                     tick={{ fontSize: 12 }}
                     domain={['dataMin - 1', 'dataMax + 1']}
                   />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value}°C`, '24h Average']}
-                    labelFormatter={(label: string) => {
-                      const dataPoint = movingAverageData.find(d => d.date === label);
-                      return dataPoint ? `${dataPoint.date} at ${dataPoint.time}` : label;
-                    }}
-                  />
+                  <Tooltip content={<CustomTooltip />} />
                   <Legend />
                   <Line 
                     type="monotone" 
