@@ -109,13 +109,14 @@
 
 .chart-container {
   background-color: #f8f9fa;
-  padding: 15px;
+  padding: 20px;
   border-radius: 8px;
-  margin: 0;
+  margin: 10px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  width: 100%;
+  width: calc(100% - 20px);
   min-width: 0;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .chart-container h3 {
@@ -142,16 +143,17 @@
 .charts-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin: 20px 0;
+  gap: 40px;
+  margin: 30px 0;
   width: 100%;
   min-height: 400px;
+  box-sizing: border-box;
 }
 
 @media (max-width: 1200px) {
   .charts-container {
     grid-template-columns: 1fr;
-    gap: 15px;
+    gap: 25px;
   }
   
   .App {
@@ -159,7 +161,8 @@
   }
   
   .chart-container {
-    margin: 10px 0;
+    margin: 15px 0;
+    width: 100%;
   }
 }
 
