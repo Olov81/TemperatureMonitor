@@ -135,6 +135,58 @@ const App: React.FC = () => {
     });
   };
 
+  // Function to interpolate missing values (NaN) using linear interpolation
+  const interpolateMissingValues = (data: ChartData[]): ChartData[] => {
+    if (data.length === 0) return data;
+    
+    const result = [...data];
+    let interpolatedCount = 0;
+    
+    for (let i = 0; i < result.length; i++) {
+      if (isNaN(result[i].temperature)) {
+        interpolatedCount++;
+        
+        // Find the nearest valid values before and after this point
+        let prevIndex = i - 1;
+        let nextIndex = i + 1;
+        
+        // Find previous valid value
+        while (prevIndex >= 0 && isNaN(result[prevIndex].temperature)) {
+          prevIndex--;
+        }
+        
+        // Find next valid value
+        while (nextIndex < result.length && isNaN(result[nextIndex].temperature)) {
+          nextIndex++;
+        }
+        
+        // Interpolate value
+        if (prevIndex >= 0 && nextIndex < result.length) {
+          // Linear interpolation between two valid points
+          const prevTemp = result[prevIndex].temperature;
+          const nextTemp = result[nextIndex].temperature;
+          const steps = nextIndex - prevIndex;
+          const currentStep = i - prevIndex;
+          
+          result[i].temperature = prevTemp + (nextTemp - prevTemp) * (currentStep / steps);
+        } else if (prevIndex >= 0) {
+          // Use the last valid value (forward fill)
+          result[i].temperature = result[prevIndex].temperature;
+        } else if (nextIndex < result.length) {
+          // Use the next valid value (backward fill)
+          result[i].temperature = result[nextIndex].temperature;
+        }
+        // If no valid values exist at all, leave as NaN (shouldn't happen in practice)
+      }
+    }
+    
+    if (interpolatedCount > 0) {
+      console.log(`🔧 Interpolated ${interpolatedCount} missing temperature values`);
+    }
+    
+    return result;
+  };
+
   // Function to calculate 24-hour trailing moving average
   const calculateMovingAverage = (data: ChartData[], windowSize: number = 24): ChartData[] => {
     return data.map((point, index) => {
@@ -211,7 +263,8 @@ const App: React.FC = () => {
         if (cachedData) {
           console.log('📱 Using local cached data to save API quota');
           setStationInfo(cachedData.stationInfo);
-          const chartData = convertApiDataToChartData(cachedData.data);
+          const rawChartData = convertApiDataToChartData(cachedData.data);
+          const chartData = interpolateMissingValues(rawChartData);
           setData(chartData);
           setMovingAverageData(calculateMovingAverage(chartData, 24));
           setSeasonInfo(detectSeason(chartData));
@@ -250,7 +303,8 @@ const App: React.FC = () => {
           saveToCache(station.data, station);
           
           setStationInfo(station);
-          const chartData = convertApiDataToChartData(station.data);
+          const rawChartData = convertApiDataToChartData(station.data);
+          const chartData = interpolateMissingValues(rawChartData);
           setData(chartData);
           
           const movingAvg = calculateMovingAverage(chartData, 24);
@@ -297,7 +351,8 @@ const App: React.FC = () => {
           saveToCache(station.data, station);
           
           setStationInfo(station);
-          const chartData = convertApiDataToChartData(station.data);
+          const rawChartData = convertApiDataToChartData(station.data);
+          const chartData = interpolateMissingValues(rawChartData);
           setData(chartData);
           
           const movingAvg = calculateMovingAverage(chartData, 24);
@@ -326,7 +381,8 @@ const App: React.FC = () => {
         if (exampleData.stations && exampleData.stations.length > 0) {
           const station = exampleData.stations[0];
           setStationInfo(station);
-          const chartData = convertApiDataToChartData(station.data);
+          const rawChartData = convertApiDataToChartData(station.data);
+          const chartData = interpolateMissingValues(rawChartData);
           setData(chartData);
           
           // Calculate 24-hour moving average for fallback data too
