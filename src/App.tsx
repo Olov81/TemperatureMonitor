@@ -25,6 +25,8 @@ interface ApiResponse {
 interface ChartData {
   datetime: string;
   temperature: number;
+  minTemperature?: number;
+  maxTemperature?: number;
   time: string; // for display purposes
   date: string; // for display purposes
 }
@@ -32,6 +34,7 @@ interface ChartData {
 const App: React.FC = () => {
   const [data, setData] = useState<ChartData[]>([]);
   const [movingAverageData, setMovingAverageData] = useState<ChartData[]>([]);
+  const [minMaxData, setMinMaxData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stationInfo, setStationInfo] = useState<Station | null>(null);
@@ -52,8 +55,9 @@ const App: React.FC = () => {
         minute: '2-digit'
       });
       
-      // Determine if this is the moving average chart or raw data
+      // Determine the chart type
       const isMovingAverage = payload[0].name?.includes('Moving Average');
+      const isMinMax = payload.some((p: any) => p.name?.includes('Maximum') || p.name?.includes('Minimum'));
       
       return (
         <div style={{
@@ -66,9 +70,26 @@ const App: React.FC = () => {
           <p style={{ margin: '0 0 5px 0', fontWeight: 'bold', color: '#495057' }}>
             📅 {formattedDateTime}
           </p>
-          <p style={{ margin: '0', color: payload[0].color }}>
-            🌡️ {isMovingAverage ? '24h Moving Average' : 'Temperature'}: {payload[0].value.toFixed(1)}°C
-          </p>
+          {isMinMax ? (
+            // Min/Max chart tooltip
+            <>
+              {payload.map((entry: any, index: number) => (
+                <p key={index} style={{ margin: '0', color: entry.color }}>
+                  🌡️ {entry.name}: {entry.value.toFixed(1)}°C
+                </p>
+              ))}
+              {data.minTemperature && data.maxTemperature && (
+                <p style={{ margin: '5px 0 0 0', fontStyle: 'italic', color: '#6c757d' }}>
+                  Range: {(data.maxTemperature - data.minTemperature).toFixed(1)}°C
+                </p>
+              )}
+            </>
+          ) : (
+            // Regular or moving average tooltip
+            <p style={{ margin: '0', color: payload[0].color }}>
+              🌡️ {isMovingAverage ? '24h Moving Average' : 'Temperature'}: {payload[0].value.toFixed(1)}°C
+            </p>
+          )}
         </div>
       );
     }
@@ -208,6 +229,31 @@ const App: React.FC = () => {
     });
   };
 
+  // Function to calculate 24-hour trailing min/max temperatures
+  const calculateMinMax = (data: ChartData[], windowSize: number = 24): ChartData[] => {
+    return data.map((point, index) => {
+      // Use trailing window: take the current point and the previous (windowSize-1) points
+      const start = Math.max(0, index - windowSize + 1);
+      const end = index + 1;
+      
+      // Get the values in the trailing window
+      const windowData = data.slice(start, end);
+      const temps = windowData.map(item => item.temperature);
+      
+      // Calculate min and max
+      const minTemp = Math.min(...temps);
+      const maxTemp = Math.max(...temps);
+      
+      return {
+        ...point,
+        minTemperature: Math.round(minTemp * 10) / 10,
+        maxTemperature: Math.round(maxTemp * 10) / 10,
+        // Keep original temperature for reference
+        temperature: point.temperature
+      };
+    });
+  };
+
   // Function to detect season based on temperature patterns
   const detectSeason = (movingAvgData: ChartData[]): { season: string; message: string } => {
     const hoursIn5Days = 5 * 24; // 120 hours
@@ -266,7 +312,13 @@ const App: React.FC = () => {
           const rawChartData = convertApiDataToChartData(cachedData.data);
           const chartData = interpolateMissingValues(rawChartData);
           setData(chartData);
-          setMovingAverageData(calculateMovingAverage(chartData, 24));
+          
+          const movingAvg = calculateMovingAverage(chartData, 24);
+          setMovingAverageData(movingAvg);
+          
+          const minMax = calculateMinMax(chartData, 24);
+          setMinMaxData(minMax);
+          
           setSeasonInfo(detectSeason(chartData));
           setLastUpdated(new Date(cachedData.timestamp));
           setUsingCachedData(true);
@@ -309,6 +361,9 @@ const App: React.FC = () => {
           
           const movingAvg = calculateMovingAverage(chartData, 24);
           setMovingAverageData(movingAvg);
+          
+          const minMax = calculateMinMax(chartData, 24);
+          setMinMaxData(minMax);
           
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
@@ -358,6 +413,9 @@ const App: React.FC = () => {
           const movingAvg = calculateMovingAverage(chartData, 24);
           setMovingAverageData(movingAvg);
           
+          const minMax = calculateMinMax(chartData, 24);
+          setMinMaxData(minMax);
+          
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
           
@@ -388,6 +446,10 @@ const App: React.FC = () => {
           // Calculate 24-hour moving average for fallback data too
           const movingAvg = calculateMovingAverage(chartData, 24);
           setMovingAverageData(movingAvg);
+          
+          // Calculate 24-hour min/max for fallback data too
+          const minMax = calculateMinMax(chartData, 24);
+          setMinMaxData(minMax);
           
           // Detect current season
           const currentSeason = detectSeason(movingAvg);
@@ -580,6 +642,61 @@ const App: React.FC = () => {
               !loading && (
                 <div className="no-data">
                   No moving average data available
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="chart-container">
+            <h3>24-Hour Min/Max Temperature Range</h3>
+            {minMaxData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={minMaxData}
+                  margin={{
+                    top: 5,
+                    right: 15,
+                    left: 5,
+                    bottom: 5,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
+                    tick={{ fontSize: 12 }}
+                    domain={['dataMin - 2', 'dataMax + 2']}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="maxTemperature" 
+                    stroke="#ff4444" 
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 6 }}
+                    name="24h Maximum"
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="minTemperature" 
+                    stroke="#4444ff" 
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 6 }}
+                    name="24h Minimum"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              !loading && (
+                <div className="no-data">
+                  No min/max data available
                 </div>
               )
             )}
