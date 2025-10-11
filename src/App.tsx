@@ -41,6 +41,15 @@ const App: React.FC = () => {
   const [seasonInfo, setSeasonInfo] = useState<{ season: string; message: string }>({ season: 'unknown', message: '' });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [usingCachedData, setUsingCachedData] = useState(false);
+  const [weatherPrediction, setWeatherPrediction] = useState<{
+    trend: string;
+    confidence: string;
+    prediction: string;
+    reasoning: string;
+    rangeSlope: number;
+    currentRange: number;
+    averageRange: number;
+  } | null>(null);
 
   // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -254,6 +263,89 @@ const App: React.FC = () => {
     });
   };
 
+  // Function to predict weather based on temperature range slope analysis
+  const predictWeatherFromRange = (minMaxData: ChartData[]) => {
+    if (minMaxData.length < 48) return null; // Need at least 2 days of data
+
+    // Calculate daily temperature ranges for the last few days
+    const dailyRanges: number[] = [];
+    const hoursPerDay = 24;
+    
+    // Get ranges for the last 5 days (or available data)
+    for (let day = 0; day < Math.min(5, Math.floor(minMaxData.length / hoursPerDay)); day++) {
+      const dayStart = minMaxData.length - (day + 1) * hoursPerDay;
+      const dayEnd = minMaxData.length - day * hoursPerDay;
+      
+      if (dayStart >= 0) {
+        const dayData = minMaxData.slice(dayStart, dayEnd);
+        const dayRanges = dayData.map(point => 
+          (point.maxTemperature || 0) - (point.minTemperature || 0)
+        );
+        const avgDayRange = dayRanges.reduce((sum, range) => sum + range, 0) / dayRanges.length;
+        dailyRanges.unshift(avgDayRange); // Add to beginning to maintain chronological order
+      }
+    }
+
+    if (dailyRanges.length < 3) return null;
+
+    // Calculate slope of temperature range over recent days
+    const n = dailyRanges.length;
+    const xValues = Array.from({ length: n }, (_, i) => i);
+    const xMean = xValues.reduce((sum, x) => sum + x, 0) / n;
+    const yMean = dailyRanges.reduce((sum, y) => sum + y, 0) / n;
+    
+    const numerator = xValues.reduce((sum, x, i) => sum + (x - xMean) * (dailyRanges[i] - yMean), 0);
+    const denominator = xValues.reduce((sum, x) => sum + (x - xMean) ** 2, 0);
+    
+    const slope = denominator !== 0 ? numerator / denominator : 0;
+    const currentRange = dailyRanges[dailyRanges.length - 1];
+    const averageRange = yMean;
+
+    // Determine weather prediction based on slope and current range
+    let trend: string;
+    let confidence: string;
+    let prediction: string;
+    let reasoning: string;
+
+    const slopeThreshold = 0.5; // °C per day
+    const rangeThreshold = 8; // °C
+
+    if (Math.abs(slope) < slopeThreshold) {
+      trend = 'stable';
+      confidence = currentRange > rangeThreshold ? 'high' : 'medium';
+      prediction = currentRange > rangeThreshold 
+        ? 'Continued clear, stable weather' 
+        : 'Continued cloudy, stable conditions';
+      reasoning = `Temperature range has been stable around ${currentRange.toFixed(1)}°C`;
+    } else if (slope > slopeThreshold) {
+      trend = 'increasing';
+      confidence = 'medium';
+      prediction = 'Clearing skies, improving weather conditions';
+      reasoning = `Temperature range increasing by ${slope.toFixed(1)}°C/day - suggests clearing weather`;
+    } else {
+      trend = 'decreasing';
+      confidence = 'medium';
+      prediction = 'Increasing cloud cover, possible weather change';
+      reasoning = `Temperature range decreasing by ${Math.abs(slope).toFixed(1)}°C/day - suggests increasing clouds`;
+    }
+
+    // Adjust confidence based on data consistency
+    const rangeVariability = dailyRanges.reduce((sum, range) => sum + Math.abs(range - averageRange), 0) / n;
+    if (rangeVariability > 2) {
+      confidence = confidence === 'high' ? 'medium' : 'low';
+    }
+
+    return {
+      trend,
+      confidence,
+      prediction,
+      reasoning,
+      rangeSlope: Math.round(slope * 100) / 100,
+      currentRange: Math.round(currentRange * 10) / 10,
+      averageRange: Math.round(averageRange * 10) / 10
+    };
+  };
+
   // Function to detect season based on temperature patterns
   const detectSeason = (movingAvgData: ChartData[]): { season: string; message: string } => {
     const hoursIn5Days = 5 * 24; // 120 hours
@@ -319,6 +411,9 @@ const App: React.FC = () => {
           const minMax = calculateMinMax(chartData, 24);
           setMinMaxData(minMax);
           
+          const prediction = predictWeatherFromRange(minMax);
+          setWeatherPrediction(prediction);
+          
           setSeasonInfo(detectSeason(chartData));
           setLastUpdated(new Date(cachedData.timestamp));
           setUsingCachedData(true);
@@ -364,6 +459,9 @@ const App: React.FC = () => {
           
           const minMax = calculateMinMax(chartData, 24);
           setMinMaxData(minMax);
+          
+          const prediction = predictWeatherFromRange(minMax);
+          setWeatherPrediction(prediction);
           
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
@@ -416,6 +514,9 @@ const App: React.FC = () => {
           const minMax = calculateMinMax(chartData, 24);
           setMinMaxData(minMax);
           
+          const prediction = predictWeatherFromRange(minMax);
+          setWeatherPrediction(prediction);
+          
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
           
@@ -450,6 +551,10 @@ const App: React.FC = () => {
           // Calculate 24-hour min/max for fallback data too
           const minMax = calculateMinMax(chartData, 24);
           setMinMaxData(minMax);
+          
+          // Predict weather from fallback data too
+          const prediction = predictWeatherFromRange(minMax);
+          setWeatherPrediction(prediction);
           
           // Detect current season
           const currentSeason = detectSeason(movingAvg);
@@ -495,6 +600,29 @@ const App: React.FC = () => {
                 </small>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Weather Prediction based on Temperature Range Analysis */}
+        {weatherPrediction && (
+          <div className={`weather-prediction ${weatherPrediction.confidence}`}>
+            <h3>🌦️ Weather Prediction</h3>
+            <div className="prediction-content">
+              <div className="main-prediction">
+                <strong>{weatherPrediction.prediction}</strong>
+                <span className={`confidence-badge ${weatherPrediction.confidence}`}>
+                  {weatherPrediction.confidence.toUpperCase()} CONFIDENCE
+                </span>
+              </div>
+              <div className="prediction-details">
+                <p><strong>Analysis:</strong> {weatherPrediction.reasoning}</p>
+                <div className="range-stats">
+                  <span>📊 Current range: <strong>{weatherPrediction.currentRange}°C</strong></span>
+                  <span>📈 Average range: <strong>{weatherPrediction.averageRange}°C</strong></span>
+                  <span>📉 Trend slope: <strong>{weatherPrediction.rangeSlope > 0 ? '+' : ''}{weatherPrediction.rangeSlope}°C/day</strong></span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         
