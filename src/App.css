@@ -65,6 +65,11 @@ html, body {
   color: #333;
 }
 
+.season-announcement.spring {
+  background-color: #90EE90;
+  color: #333;
+}
+
 .season-announcement.autumn {
   background-color: #ff7300;
 }

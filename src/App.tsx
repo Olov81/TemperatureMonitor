@@ -355,13 +355,23 @@ const App: React.FC = () => {
     // Get the current (most recent) 24-hour average temperature
     const currentTemp = movingAvgData[movingAvgData.length - 1].temperature;
     
-    // Determine season based on current temperature only
+    // Get current date to determine if it's first or second half of year
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // getMonth() returns 0-11, so add 1 for 1-12
+    const isFirstHalfOfYear = currentMonth <= 6; // January-June
+    
+    // Determine season based on current temperature and time of year
     if (currentTemp < 0) {
-      return { season: 'winter', message: 'winterlike temperatures' };
+      return { season: 'winter', message: 'Winter-like temperatures' };
     } else if (currentTemp < 10) {
-      return { season: 'autumn', message: 'autumnlike temperatures' };
+      // Temperature between 0-10°C: Spring or Autumn based on time of year
+      if (isFirstHalfOfYear) {
+        return { season: 'spring', message: 'Spring-like temperatures' };
+      } else {
+        return { season: 'autumn', message: 'Autumn-like temperatures' };
+      }
     } else {
-      return { season: 'summer', message: 'summerlike temperatures' };
+      return { season: 'summer', message: 'Summer-like temperatures' };
     }
   };
 
@@ -563,16 +573,19 @@ const App: React.FC = () => {
             {seasonInfo.message && (
               <div className={`season-announcement ${seasonInfo.season}`}>
                 {seasonInfo.season === 'summer' && '☀️'}
+                {seasonInfo.season === 'spring' && '🌸'}
                 {seasonInfo.season === 'autumn' && '🍂'}
                 {seasonInfo.season === 'winter' && '❄️'}
                 <strong> {seasonInfo.message} </strong>
                 {seasonInfo.season === 'summer' && '☀️'}
+                {seasonInfo.season === 'spring' && '🌸'}
                 {seasonInfo.season === 'autumn' && '🍂'}
                 {seasonInfo.season === 'winter' && '❄️'}
                 <br />
                 <small>
                   {seasonInfo.season === 'summer' && 'Current 24-hour average temperature is above 10°C'}
-                  {seasonInfo.season === 'autumn' && 'Current 24-hour average temperature is between 0°C and 10°C'}
+                  {seasonInfo.season === 'spring' && 'Current 24-hour average temperature is between 0°C and 10°C (first half of year)'}
+                  {seasonInfo.season === 'autumn' && 'Current 24-hour average temperature is between 0°C and 10°C (second half of year)'}
                   {seasonInfo.season === 'winter' && 'Current 24-hour average temperature is below 0°C'}
                 </small>
               </div>
