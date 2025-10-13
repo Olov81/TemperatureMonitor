@@ -346,45 +346,22 @@ const App: React.FC = () => {
     };
   };
 
-  // Function to detect season based on temperature patterns
+  // Function to detect season based on current 24-hour average temperature
   const detectSeason = (movingAvgData: ChartData[]): { season: string; message: string } => {
-    const hoursIn5Days = 5 * 24; // 120 hours
-    let consecutiveHoursBelow0 = 0;
-    let consecutiveHoursBelow10 = 0;
-    let hasBeenAbove10InLast5Days = false;
-    
-    // Check the last 5 days (120 hours) of data
-    const last5Days = movingAvgData.slice(-hoursIn5Days);
-    
-    // Check if any temperature was above 10°C in the last 5 days
-    hasBeenAbove10InLast5Days = last5Days.some(point => point.temperature > 10);
-    
-    // Count consecutive hours below thresholds (from the end)
-    for (let i = movingAvgData.length - 1; i >= 0; i--) {
-      if (movingAvgData[i].temperature < 0) {
-        consecutiveHoursBelow0++;
-      } else {
-        break; // Stop counting if temperature goes above 0°C
-      }
-    }
-    
-    for (let i = movingAvgData.length - 1; i >= 0; i--) {
-      if (movingAvgData[i].temperature < 10) {
-        consecutiveHoursBelow10++;
-      } else {
-        break; // Stop counting if temperature goes above 10°C
-      }
-    }
-    
-    // Determine season based on conditions
-    if (consecutiveHoursBelow0 >= hoursIn5Days) {
-      return { season: 'winter', message: 'Seems like it\'s winter!' };
-    } else if (consecutiveHoursBelow10 >= hoursIn5Days) {
-      return { season: 'autumn', message: 'Seems like it\'s autumn!' };
-    } else if (hasBeenAbove10InLast5Days) {
-      return { season: 'summer', message: 'Seems like it\'s summer!' };
-    } else {
+    if (movingAvgData.length === 0) {
       return { season: 'unknown', message: '' };
+    }
+    
+    // Get the current (most recent) 24-hour average temperature
+    const currentTemp = movingAvgData[movingAvgData.length - 1].temperature;
+    
+    // Determine season based on current temperature only
+    if (currentTemp < 0) {
+      return { season: 'winter', message: 'winterlike temperatures' };
+    } else if (currentTemp < 10) {
+      return { season: 'autumn', message: 'autumnlike temperatures' };
+    } else {
+      return { season: 'summer', message: 'summerlike temperatures' };
     }
   };
 
@@ -594,9 +571,9 @@ const App: React.FC = () => {
                 {seasonInfo.season === 'winter' && '❄️'}
                 <br />
                 <small>
-                  {seasonInfo.season === 'summer' && 'Daily average temperature has been above 10°C recently'}
-                  {seasonInfo.season === 'autumn' && 'Daily average temperature has been below 10°C for more than 5 days'}
-                  {seasonInfo.season === 'winter' && 'Daily average temperature has been below 0°C for more than 5 days'}
+                  {seasonInfo.season === 'summer' && 'Current 24-hour average temperature is above 10°C'}
+                  {seasonInfo.season === 'autumn' && 'Current 24-hour average temperature is between 0°C and 10°C'}
+                  {seasonInfo.season === 'winter' && 'Current 24-hour average temperature is below 0°C'}
                 </small>
               </div>
             )}
