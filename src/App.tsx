@@ -164,6 +164,11 @@ const App: React.FC = () => {
     }
   };
 
+  // Function to get X-axis dataKey based on selected time period
+  const getXAxisDataKey = (): string => {
+    return selectedTimePeriod === '24h' ? 'time' : 'date';
+  };
+
   // Cache management constants
   const CACHE_KEY = 'temperatureData';
   const CACHE_DURATION_MS = 55 * 60 * 1000; // 55 minutes (slightly less than 1 hour for safety)
@@ -764,7 +769,7 @@ const App: React.FC = () => {
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey={getXAxisDataKey()} 
                     tick={{ fontSize: 12 }}
                     interval="preserveStartEnd"
                   />
@@ -810,7 +815,7 @@ const App: React.FC = () => {
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey={getXAxisDataKey()} 
                     tick={{ fontSize: 12 }}
                     interval="preserveStartEnd"
                   />
@@ -870,7 +875,7 @@ const App: React.FC = () => {
                 >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey={getXAxisDataKey()} 
                     tick={{ fontSize: 12 }}
                     interval="preserveStartEnd"
                   />
