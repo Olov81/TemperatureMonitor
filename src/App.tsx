@@ -51,6 +51,13 @@ const App: React.FC = () => {
     averageRange: number;
   } | null>(null);
 
+  // Time period state for view switching
+  type TimePeriod = '24h' | '1week' | '1month';
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<TimePeriod>('1week');
+  const [fullData, setFullData] = useState<ChartData[]>([]); // Store full month of data
+  const [fullMovingAverageData, setFullMovingAverageData] = useState<ChartData[]>([]);
+  const [fullMinMaxData, setFullMinMaxData] = useState<ChartData[]>([]);
+
   // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -103,6 +110,58 @@ const App: React.FC = () => {
       );
     }
     return null;
+  };
+
+  // Data filtering functions for different time periods
+  const filterDataByTimePeriod = (fullData: ChartData[], period: TimePeriod): ChartData[] => {
+    if (fullData.length === 0) return [];
+    
+    const now = new Date();
+    let cutoffTime: Date;
+    
+    switch (period) {
+      case '24h':
+        cutoffTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
+        break;
+      case '1week':
+        cutoffTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+        break;
+      case '1month':
+        return fullData; // Return all data for 1 month view
+      default:
+        return fullData;
+    }
+    
+    // Filter data to only include points after the cutoff time
+    return fullData.filter(point => {
+      const pointTime = new Date(point.datetime);
+      return pointTime >= cutoffTime;
+    });
+  };
+
+  // Function to update displayed data based on selected time period
+  const updateDisplayedData = () => {
+    const filteredData = filterDataByTimePeriod(fullData, selectedTimePeriod);
+    const filteredMovingAvg = filterDataByTimePeriod(fullMovingAverageData, selectedTimePeriod);
+    const filteredMinMax = filterDataByTimePeriod(fullMinMaxData, selectedTimePeriod);
+    
+    setData(filteredData);
+    setMovingAverageData(filteredMovingAvg);
+    setMinMaxData(filteredMinMax);
+  };
+
+  // Function to get display text for selected time period
+  const getTimePeriodDisplayText = (): string => {
+    switch (selectedTimePeriod) {
+      case '24h':
+        return 'Last 24 Hours';
+      case '1week':
+        return 'Last Week';
+      case '1month':
+        return 'Last Month';
+      default:
+        return 'Last Week';
+    }
   };
 
   // Cache management constants
@@ -390,13 +449,14 @@ const App: React.FC = () => {
           setStationInfo(cachedData.stationInfo);
           const rawChartData = convertApiDataToChartData(cachedData.data);
           const chartData = interpolateMissingValues(rawChartData);
-          setData(chartData);
           
           const movingAvg = calculateMovingAverage(chartData, 24);
-          setMovingAverageData(movingAvg);
-          
           const minMax = calculateMinMax(chartData, 24);
-          setMinMaxData(minMax);
+          
+          // Store full data
+          setFullData(chartData);
+          setFullMovingAverageData(movingAvg);
+          setFullMinMaxData(minMax);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
@@ -439,13 +499,14 @@ const App: React.FC = () => {
           setStationInfo(station);
           const rawChartData = convertApiDataToChartData(station.data);
           const chartData = interpolateMissingValues(rawChartData);
-          setData(chartData);
           
           const movingAvg = calculateMovingAverage(chartData, 24);
-          setMovingAverageData(movingAvg);
-          
           const minMax = calculateMinMax(chartData, 24);
-          setMinMaxData(minMax);
+          
+          // Store full data
+          setFullData(chartData);
+          setFullMovingAverageData(movingAvg);
+          setFullMinMaxData(minMax);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
@@ -463,7 +524,7 @@ const App: React.FC = () => {
       } else {
         // Local development: Use direct API call with CORS proxy
         const corsProxy = 'https://api.allorigins.win/get?url=';
-        const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
+        const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1month&data';
         const proxyUrl = corsProxy + encodeURIComponent(apiUrl);
         
         console.log('🔧 Local development: Fetching from API via CORS proxy...');
@@ -493,13 +554,14 @@ const App: React.FC = () => {
           setStationInfo(station);
           const rawChartData = convertApiDataToChartData(station.data);
           const chartData = interpolateMissingValues(rawChartData);
-          setData(chartData);
           
           const movingAvg = calculateMovingAverage(chartData, 24);
-          setMovingAverageData(movingAvg);
-          
           const minMax = calculateMinMax(chartData, 24);
-          setMinMaxData(minMax);
+          
+          // Store full data
+          setFullData(chartData);
+          setFullMovingAverageData(movingAvg);
+          setFullMinMaxData(minMax);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
@@ -529,15 +591,17 @@ const App: React.FC = () => {
           setStationInfo(station);
           const rawChartData = convertApiDataToChartData(station.data);
           const chartData = interpolateMissingValues(rawChartData);
-          setData(chartData);
           
           // Calculate 24-hour moving average for fallback data too
           const movingAvg = calculateMovingAverage(chartData, 24);
-          setMovingAverageData(movingAvg);
           
           // Calculate 24-hour min/max for fallback data too
           const minMax = calculateMinMax(chartData, 24);
-          setMinMaxData(minMax);
+          
+          // Store full data
+          setFullData(chartData);
+          setFullMovingAverageData(movingAvg);
+          setFullMinMaxData(minMax);
           
           // Predict weather from fallback data too
           const prediction = predictWeatherFromRange(minMax);
@@ -561,6 +625,11 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchTemperatureData();
   }, []);
+
+  // Update displayed data when time period selection changes
+  useEffect(() => {
+    updateDisplayedData();
+  }, [selectedTimePeriod, fullData, fullMovingAverageData, fullMinMaxData]);
 
   return (
     <div className="App">
@@ -617,6 +686,27 @@ const App: React.FC = () => {
         )}
         
         <div className="controls">
+          <div className="time-period-selector">
+            <label>View: </label>
+            <button 
+              onClick={() => setSelectedTimePeriod('24h')}
+              className={`period-button ${selectedTimePeriod === '24h' ? 'active' : ''}`}
+            >
+              Last 24 Hours
+            </button>
+            <button 
+              onClick={() => setSelectedTimePeriod('1week')}
+              className={`period-button ${selectedTimePeriod === '1week' ? 'active' : ''}`}
+            >
+              Last Week
+            </button>
+            <button 
+              onClick={() => setSelectedTimePeriod('1month')}
+              className={`period-button ${selectedTimePeriod === '1month' ? 'active' : ''}`}
+            >
+              Last Month
+            </button>
+          </div>
           <button 
             onClick={() => fetchTemperatureData(true)} 
             disabled={loading}
@@ -660,7 +750,7 @@ const App: React.FC = () => {
         
         <div className="charts-container">
           <div className="chart-container">
-            <h3>Hourly Temperature Data</h3>
+            <h3>Hourly Temperature Data - {getTimePeriodDisplayText()}</h3>
             {data.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart
@@ -706,7 +796,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="chart-container">
-            <h3>24-Hour Moving Average</h3>
+            <h3>24-Hour Moving Average - {getTimePeriodDisplayText()}</h3>
             {movingAverageData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart
@@ -766,7 +856,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="chart-container">
-            <h3>24-Hour Min/Max Temperature Range</h3>
+            <h3>24-Hour Min/Max Temperature Range - {getTimePeriodDisplayText()}</h3>
             {minMaxData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart
@@ -826,7 +916,7 @@ const App: React.FC = () => {
             <strong>Data Source:</strong> temperatur.nu API - Vasastan, Örebro
           </p>
           <p>
-            <strong>Data Range:</strong> Last 7 days of hourly temperature readings
+            <strong>Data Range:</strong> {getTimePeriodDisplayText()} of hourly temperature readings
           </p>
           {data.length > 0 && (
             <p>

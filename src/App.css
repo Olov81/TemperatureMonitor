@@ -213,6 +213,53 @@ html, body {
 
 .controls {
   margin: 15px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+}
+
+.time-period-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.time-period-selector label {
+  font-weight: bold;
+  color: #333;
+  margin-right: 5px;
+}
+
+.period-button {
+  background-color: #f8f9fa;
+  color: #495057;
+  border: 2px solid #dee2e6;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
+
+.period-button:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.period-button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.period-button.active:hover {
+  background-color: #0056b3;
+  border-color: #0056b3;
 }
 
 .refresh-button {

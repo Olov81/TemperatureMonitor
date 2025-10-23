@@ -21,7 +21,7 @@ async function fetchTemperatureData() {
     const https = require('https');
     const url = require('url');
     
-    const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1week&data';
+    const apiUrl = 'http://api.temperatur.nu/tnu_1.17.php?p=vasastan&cli=apan&span=1month&data';
     
     return new Promise((resolve, reject) => {
       // Parse URL to determine if we need http or https
