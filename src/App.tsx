@@ -169,6 +169,35 @@ const App: React.FC = () => {
     return selectedTimePeriod === '24h' ? 'time' : 'date';
   };
 
+  // Function to calculate Y-axis domain with even numbers
+  const calculateYAxisDomain = (data: ChartData[]): [number, number] => {
+    if (data.length === 0) return [-5, 25];
+    
+    const temps = data.map(d => d.temperature).filter(t => !isNaN(t));
+    if (temps.length === 0) return [-5, 25];
+    
+    const minTemp = Math.min(...temps);
+    const maxTemp = Math.max(...temps);
+    
+    // Round to nearest 5 degrees and add some padding
+    const minRounded = Math.floor((minTemp - 2) / 5) * 5;
+    const maxRounded = Math.ceil((maxTemp + 2) / 5) * 5;
+    
+    return [minRounded, maxRounded];
+  };
+
+  // Function to generate Y-axis ticks at 5-degree intervals
+  const generateYAxisTicks = (domain: [number, number]): number[] => {
+    const [min, max] = domain;
+    const ticks: number[] = [];
+    
+    for (let i = min; i <= max; i += 5) {
+      ticks.push(i);
+    }
+    
+    return ticks;
+  };
+
   // Cache management constants
   const CACHE_KEY = 'temperatureData';
   const CACHE_DURATION_MS = 55 * 60 * 1000; // 55 minutes (slightly less than 1 hour for safety)
@@ -776,7 +805,8 @@ const App: React.FC = () => {
                   <YAxis 
                     label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
                     tick={{ fontSize: 12 }}
-                    domain={['dataMin - 2', 'dataMax + 2']}
+                    domain={calculateYAxisDomain(data)}
+                    ticks={generateYAxisTicks(calculateYAxisDomain(data))}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
@@ -822,7 +852,8 @@ const App: React.FC = () => {
                   <YAxis 
                     label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
                     tick={{ fontSize: 12 }}
-                    domain={['dataMin - 1', 'dataMax + 1']}
+                    domain={calculateYAxisDomain(movingAverageData)}
+                    ticks={generateYAxisTicks(calculateYAxisDomain(movingAverageData))}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
@@ -844,10 +875,10 @@ const App: React.FC = () => {
                   />
                   <ReferenceLine 
                     y={0} 
-                    stroke="#4169E1" 
+                    stroke="#DC143C" 
                     strokeDasharray="3 3" 
-                    strokeWidth={2}
-                    label={{ value: "Winter (0°C)", position: "insideBottomRight" }}
+                    strokeWidth={3}
+                    label={{ value: "Winter (0°C)", position: "insideBottomRight", style: { fill: '#DC143C', fontWeight: 'bold' } }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -882,7 +913,28 @@ const App: React.FC = () => {
                   <YAxis 
                     label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
                     tick={{ fontSize: 12 }}
-                    domain={['dataMin - 2', 'dataMax + 2']}
+                    domain={(() => {
+                      if (minMaxData.length === 0) return [-5, 25];
+                      const allTemps = minMaxData.flatMap(d => [d.minTemperature || 0, d.maxTemperature || 0]).filter(t => !isNaN(t));
+                      if (allTemps.length === 0) return [-5, 25];
+                      const min = Math.min(...allTemps);
+                      const max = Math.max(...allTemps);
+                      return [Math.floor((min - 2) / 5) * 5, Math.ceil((max + 2) / 5) * 5];
+                    })()}
+                    ticks={(() => {
+                      if (minMaxData.length === 0) return [-5, 0, 5, 10, 15, 20, 25];
+                      const allTemps = minMaxData.flatMap(d => [d.minTemperature || 0, d.maxTemperature || 0]).filter(t => !isNaN(t));
+                      if (allTemps.length === 0) return [-5, 0, 5, 10, 15, 20, 25];
+                      const min = Math.min(...allTemps);
+                      const max = Math.max(...allTemps);
+                      const minRounded = Math.floor((min - 2) / 5) * 5;
+                      const maxRounded = Math.ceil((max + 2) / 5) * 5;
+                      const ticks = [];
+                      for (let i = minRounded; i <= maxRounded; i += 5) {
+                        ticks.push(i);
+                      }
+                      return ticks;
+                    })()}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend />
