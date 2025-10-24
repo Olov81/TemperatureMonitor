@@ -720,27 +720,6 @@ const App: React.FC = () => {
         )}
         
         <div className="controls">
-          <div className="time-period-selector">
-            <label>View: </label>
-            <button 
-              onClick={() => setSelectedTimePeriod('24h')}
-              className={`period-button ${selectedTimePeriod === '24h' ? 'active' : ''}`}
-            >
-              Last 24 Hours
-            </button>
-            <button 
-              onClick={() => setSelectedTimePeriod('1week')}
-              className={`period-button ${selectedTimePeriod === '1week' ? 'active' : ''}`}
-            >
-              Last Week
-            </button>
-            <button 
-              onClick={() => setSelectedTimePeriod('1month')}
-              className={`period-button ${selectedTimePeriod === '1month' ? 'active' : ''}`}
-            >
-              Last Month
-            </button>
-          </div>
           <button 
             onClick={() => fetchTemperatureData(true)} 
             disabled={loading}
@@ -781,6 +760,29 @@ const App: React.FC = () => {
             {error}
           </div>
         )}
+        
+        {/* Time Period Selector - positioned above charts */}
+        <div className="time-period-selector">
+          <label>View: </label>
+          <button 
+            onClick={() => setSelectedTimePeriod('24h')}
+            className={`period-button ${selectedTimePeriod === '24h' ? 'active' : ''}`}
+          >
+            Last 24 Hours
+          </button>
+          <button 
+            onClick={() => setSelectedTimePeriod('1week')}
+            className={`period-button ${selectedTimePeriod === '1week' ? 'active' : ''}`}
+          >
+            Last Week
+          </button>
+          <button 
+            onClick={() => setSelectedTimePeriod('1month')}
+            className={`period-button ${selectedTimePeriod === '1month' ? 'active' : ''}`}
+          >
+            Last Month
+          </button>
+        </div>
         
         <div className="charts-container">
           <div className="chart-container">

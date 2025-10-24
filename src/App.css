@@ -214,8 +214,7 @@ html, body {
 .controls {
   margin: 15px 0;
   display: flex;
-  flex-direction: column;
-  gap: 15px;
+  justify-content: center;
   align-items: center;
 }
 
@@ -225,6 +224,11 @@ html, body {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+  margin: 20px 0 15px 0;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
 }
 
 .time-period-selector label {
