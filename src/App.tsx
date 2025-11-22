@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [data, setData] = useState<ChartData[]>([]);
   const [movingAverageData, setMovingAverageData] = useState<ChartData[]>([]);
   const [minMaxData, setMinMaxData] = useState<ChartData[]>([]);
+  const [standardDeviationData, setStandardDeviationData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stationInfo, setStationInfo] = useState<Station | null>(null);
@@ -50,6 +51,20 @@ const App: React.FC = () => {
     currentRange: number;
     averageRange: number;
   } | null>(null);
+  const [enhancedWeatherPrediction, setEnhancedWeatherPrediction] = useState<{
+    prediction: string;
+    confidence: string;
+    reasoning: string;
+    weatherIcon: string;
+    metrics: {
+      currentStdDev: number;
+      avgStdDev: number;
+      stdDevSlope: number;
+      currentRange: number;
+      avgRange: number;
+      rangeSlope: number;
+    };
+  } | null>(null);
 
   // Time period state for view switching
   type TimePeriod = '24h' | '1week' | '1month';
@@ -57,6 +72,7 @@ const App: React.FC = () => {
   const [fullData, setFullData] = useState<ChartData[]>([]); // Store full month of data
   const [fullMovingAverageData, setFullMovingAverageData] = useState<ChartData[]>([]);
   const [fullMinMaxData, setFullMinMaxData] = useState<ChartData[]>([]);
+  const [fullStandardDeviationData, setFullStandardDeviationData] = useState<ChartData[]>([]);
 
   // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -74,6 +90,7 @@ const App: React.FC = () => {
       // Determine the chart type
       const isMovingAverage = payload[0].name?.includes('Moving Average');
       const isMinMax = payload.some((p: any) => p.name?.includes('Maximum') || p.name?.includes('Minimum'));
+      const isStdDev = payload[0].name?.includes('Standard Deviation');
       
       return (
         <div style={{
@@ -100,6 +117,11 @@ const App: React.FC = () => {
                 </p>
               )}
             </>
+          ) : isStdDev ? (
+            // Standard deviation tooltip
+            <p style={{ margin: '0', color: payload[0].color }}>
+              📊 24h Standard Deviation: {payload[0].value.toFixed(2)}°C
+            </p>
           ) : (
             // Regular or moving average tooltip
             <p style={{ margin: '0', color: payload[0].color }}>
@@ -144,10 +166,12 @@ const App: React.FC = () => {
     const filteredData = filterDataByTimePeriod(fullData, selectedTimePeriod);
     const filteredMovingAvg = filterDataByTimePeriod(fullMovingAverageData, selectedTimePeriod);
     const filteredMinMax = filterDataByTimePeriod(fullMinMaxData, selectedTimePeriod);
+    const filteredStdDev = filterDataByTimePeriod(fullStandardDeviationData, selectedTimePeriod);
     
     setData(filteredData);
     setMovingAverageData(filteredMovingAvg);
     setMinMaxData(filteredMinMax);
+    setStandardDeviationData(filteredStdDev);
   };
 
   // Function to get display text for selected time period
@@ -356,6 +380,34 @@ const App: React.FC = () => {
     });
   };
 
+  // Function to calculate 24-hour rolling standard deviation
+  const calculateRollingStdDev = (data: ChartData[], windowSize: number = 24): ChartData[] => {
+    return data.map((point, index) => {
+      // Use trailing window: take the current point and the previous (windowSize-1) points
+      const start = Math.max(0, index - windowSize + 1);
+      const end = index + 1;
+      
+      // Get the values in the trailing window
+      const windowData = data.slice(start, end);
+      
+      // Calculate mean
+      const sum = windowData.reduce((acc, item) => acc + item.temperature, 0);
+      const mean = sum / windowData.length;
+      
+      // Calculate variance
+      const squaredDifferences = windowData.map(item => Math.pow(item.temperature - mean, 2));
+      const variance = squaredDifferences.reduce((acc, val) => acc + val, 0) / windowData.length;
+      
+      // Calculate standard deviation
+      const stdDev = Math.sqrt(variance);
+      
+      return {
+        ...point,
+        temperature: Math.round(stdDev * 100) / 100 // Round to 2 decimal places
+      };
+    });
+  };
+
   // Function to predict weather based on temperature range slope analysis
   const predictWeatherFromRange = (minMaxData: ChartData[]) => {
     if (minMaxData.length < 48) return null; // Need at least 2 days of data
@@ -439,6 +491,135 @@ const App: React.FC = () => {
     };
   };
 
+  // Enhanced weather prediction combining standard deviation and min/max range
+  const predictWeatherEnhanced = (minMaxData: ChartData[], stdDevData: ChartData[]) => {
+    if (minMaxData.length < 48 || stdDevData.length < 48) return null;
+
+    // Get recent 5 days of data
+    const recentHours = 120; // 5 days
+    const recentMinMax = minMaxData.slice(-recentHours);
+    const recentStdDev = stdDevData.slice(-recentHours);
+    
+    // Calculate average std dev for each day
+    const dailyStdDevs: number[] = [];
+    const dailyRanges: number[] = [];
+    const hoursPerDay = 24;
+    
+    for (let day = 0; day < 5; day++) {
+      const dayStart = day * hoursPerDay;
+      const dayEnd = (day + 1) * hoursPerDay;
+      
+      const dayStdDev = recentStdDev.slice(dayStart, dayEnd);
+      const dayMinMax = recentMinMax.slice(dayStart, dayEnd);
+      
+      // Average std dev for the day
+      const avgStdDev = dayStdDev.reduce((sum, point) => sum + point.temperature, 0) / dayStdDev.length;
+      dailyStdDevs.push(avgStdDev);
+      
+      // Average range for the day
+      const avgRange = dayMinMax.reduce((sum, point) => 
+        sum + ((point.maxTemperature || 0) - (point.minTemperature || 0)), 0
+      ) / dayMinMax.length;
+      dailyRanges.push(avgRange);
+    }
+    
+    // Calculate trends (slope over 5 days)
+    const calculateSlope = (values: number[]) => {
+      const n = values.length;
+      const xValues = Array.from({ length: n }, (_, i) => i);
+      const xMean = xValues.reduce((sum, x) => sum + x, 0) / n;
+      const yMean = values.reduce((sum, y) => sum + y, 0) / n;
+      const numerator = xValues.reduce((sum, x, i) => sum + (x - xMean) * (values[i] - yMean), 0);
+      const denominator = xValues.reduce((sum, x) => sum + (x - xMean) ** 2, 0);
+      return denominator !== 0 ? numerator / denominator : 0;
+    };
+    
+    const stdDevSlope = calculateSlope(dailyStdDevs);
+    const rangeSlope = calculateSlope(dailyRanges);
+    
+    const currentStdDev = dailyStdDevs[4]; // Most recent day
+    const currentRange = dailyRanges[4];
+    const avgStdDev = dailyStdDevs.reduce((sum, val) => sum + val, 0) / 5;
+    const avgRange = dailyRanges.reduce((sum, val) => sum + val, 0) / 5;
+    
+    // Analyze patterns
+    let prediction = '';
+    let confidence = '';
+    let reasoning = '';
+    let weatherIcon = '';
+    
+    // High std dev + increasing = unstable weather approaching
+    if (currentStdDev > 2.5 && stdDevSlope > 0.1) {
+      prediction = 'Unstable weather approaching - possible weather front or storm system';
+      confidence = 'medium-high';
+      reasoning = `Volatility rising (${currentStdDev.toFixed(1)}°C, +${stdDevSlope.toFixed(2)}°C/day)`;
+      weatherIcon = '⚠️';
+    }
+    // High std dev + decreasing = weather stabilizing after disturbance
+    else if (currentStdDev > 2.5 && stdDevSlope < -0.1) {
+      prediction = 'Weather stabilizing after recent disturbance';
+      confidence = 'medium';
+      reasoning = `Volatility decreasing (${currentStdDev.toFixed(1)}°C, ${stdDevSlope.toFixed(2)}°C/day)`;
+      weatherIcon = '🌤️';
+    }
+    // Low std dev + high range = clear, stable weather
+    else if (currentStdDev < 1.5 && currentRange > 8) {
+      prediction = 'Clear skies with stable conditions - large day/night variation';
+      confidence = 'high';
+      reasoning = `Low volatility (${currentStdDev.toFixed(1)}°C) with large daily range (${currentRange.toFixed(1)}°C)`;
+      weatherIcon = '☀️';
+    }
+    // Low std dev + low range = overcast but stable
+    else if (currentStdDev < 1.5 && currentRange < 5) {
+      prediction = 'Overcast/cloudy conditions with stable temperatures';
+      confidence = 'high';
+      reasoning = `Low volatility (${currentStdDev.toFixed(1)}°C) with small daily range (${currentRange.toFixed(1)}°C)`;
+      weatherIcon = '☁️';
+    }
+    // Range increasing + std dev stable = clearing up
+    else if (rangeSlope > 0.5 && Math.abs(stdDevSlope) < 0.1) {
+      prediction = 'Skies clearing - transitioning to better weather';
+      confidence = 'medium';
+      reasoning = `Daily range increasing (${currentRange.toFixed(1)}°C, +${rangeSlope.toFixed(1)}°C/day) with stable volatility`;
+      weatherIcon = '🌤️';
+    }
+    // Range decreasing + std dev increasing = weather deteriorating
+    else if (rangeSlope < -0.5 && stdDevSlope > 0.1) {
+      prediction = 'Weather deteriorating - increasing clouds and instability';
+      confidence = 'medium';
+      reasoning = `Daily range decreasing with rising volatility - suggests approaching weather system`;
+      weatherIcon = '🌧️';
+    }
+    // Both stable
+    else if (Math.abs(stdDevSlope) < 0.1 && Math.abs(rangeSlope) < 0.5) {
+      prediction = 'Stable weather pattern continuing';
+      confidence = currentRange > 6 ? 'high' : 'medium';
+      reasoning = `Both volatility and range stable (σ=${currentStdDev.toFixed(1)}°C, range=${currentRange.toFixed(1)}°C)`;
+      weatherIcon = currentRange > 6 ? '☀️' : '☁️';
+    }
+    else {
+      prediction = 'Mixed signals - monitor conditions';
+      confidence = 'low';
+      reasoning = `Volatility ${stdDevSlope > 0 ? 'increasing' : 'decreasing'}, range ${rangeSlope > 0 ? 'increasing' : 'decreasing'}`;
+      weatherIcon = '🌦️';
+    }
+    
+    return {
+      prediction,
+      confidence,
+      reasoning,
+      weatherIcon,
+      metrics: {
+        currentStdDev: Math.round(currentStdDev * 100) / 100,
+        avgStdDev: Math.round(avgStdDev * 100) / 100,
+        stdDevSlope: Math.round(stdDevSlope * 100) / 100,
+        currentRange: Math.round(currentRange * 10) / 10,
+        avgRange: Math.round(avgRange * 10) / 10,
+        rangeSlope: Math.round(rangeSlope * 100) / 100,
+      }
+    };
+  };
+
   // Function to detect season based on current 24-hour average temperature
   const detectSeason = (movingAvgData: ChartData[]): { season: string; message: string } => {
     if (movingAvgData.length === 0) {
@@ -486,14 +667,19 @@ const App: React.FC = () => {
           
           const movingAvg = calculateMovingAverage(chartData, 24);
           const minMax = calculateMinMax(chartData, 24);
+          const stdDev = calculateRollingStdDev(chartData, 24);
           
           // Store full data
           setFullData(chartData);
           setFullMovingAverageData(movingAvg);
           setFullMinMaxData(minMax);
+          setFullStandardDeviationData(stdDev);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
+          
+          const enhancedPrediction = predictWeatherEnhanced(minMax, stdDev);
+          setEnhancedWeatherPrediction(enhancedPrediction);
           
           setSeasonInfo(detectSeason(chartData));
           setLastUpdated(new Date(cachedData.timestamp));
@@ -536,14 +722,19 @@ const App: React.FC = () => {
           
           const movingAvg = calculateMovingAverage(chartData, 24);
           const minMax = calculateMinMax(chartData, 24);
+          const stdDev = calculateRollingStdDev(chartData, 24);
           
           // Store full data
           setFullData(chartData);
           setFullMovingAverageData(movingAvg);
           setFullMinMaxData(minMax);
+          setFullStandardDeviationData(stdDev);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
+          
+          const enhancedPrediction = predictWeatherEnhanced(minMax, stdDev);
+          setEnhancedWeatherPrediction(enhancedPrediction);
           
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
@@ -591,14 +782,19 @@ const App: React.FC = () => {
           
           const movingAvg = calculateMovingAverage(chartData, 24);
           const minMax = calculateMinMax(chartData, 24);
+          const stdDev = calculateRollingStdDev(chartData, 24);
           
           // Store full data
           setFullData(chartData);
           setFullMovingAverageData(movingAvg);
           setFullMinMaxData(minMax);
+          setFullStandardDeviationData(stdDev);
           
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
+          
+          const enhancedPrediction = predictWeatherEnhanced(minMax, stdDev);
+          setEnhancedWeatherPrediction(enhancedPrediction);
           
           const currentSeason = detectSeason(movingAvg);
           setSeasonInfo(currentSeason);
@@ -632,14 +828,21 @@ const App: React.FC = () => {
           // Calculate 24-hour min/max for fallback data too
           const minMax = calculateMinMax(chartData, 24);
           
+          // Calculate 24-hour standard deviation for fallback data too
+          const stdDev = calculateRollingStdDev(chartData, 24);
+          
           // Store full data
           setFullData(chartData);
           setFullMovingAverageData(movingAvg);
           setFullMinMaxData(minMax);
+          setFullStandardDeviationData(stdDev);
           
           // Predict weather from fallback data too
           const prediction = predictWeatherFromRange(minMax);
           setWeatherPrediction(prediction);
+          
+          const enhancedPrediction = predictWeatherEnhanced(minMax, stdDev);
+          setEnhancedWeatherPrediction(enhancedPrediction);
           
           // Detect current season
           const currentSeason = detectSeason(movingAvg);
@@ -663,7 +866,7 @@ const App: React.FC = () => {
   // Update displayed data when time period selection changes
   useEffect(() => {
     updateDisplayedData();
-  }, [selectedTimePeriod, fullData, fullMovingAverageData, fullMinMaxData]);
+  }, [selectedTimePeriod, fullData, fullMovingAverageData, fullMinMaxData, fullStandardDeviationData]);
 
   return (
     <div className="App">
@@ -699,7 +902,7 @@ const App: React.FC = () => {
         {/* Weather Prediction based on Temperature Range Analysis */}
         {weatherPrediction && (
           <div className={`weather-prediction ${weatherPrediction.confidence}`}>
-            <h3>🌦️ Weather Prediction</h3>
+            <h3>🌦️ Weather Prediction (Range-based)</h3>
             <div className="prediction-content">
               <div className="main-prediction">
                 <strong>{weatherPrediction.prediction}</strong>
@@ -713,6 +916,48 @@ const App: React.FC = () => {
                   <span>📊 Current range: <strong>{weatherPrediction.currentRange}°C</strong></span>
                   <span>📈 Average range: <strong>{weatherPrediction.averageRange}°C</strong></span>
                   <span>📉 Trend slope: <strong>{weatherPrediction.rangeSlope > 0 ? '+' : ''}{weatherPrediction.rangeSlope}°C/day</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Enhanced Weather Prediction combining Standard Deviation and Range */}
+        {enhancedWeatherPrediction && (
+          <div className={`weather-prediction enhanced ${enhancedWeatherPrediction.confidence}`}>
+            <h3>{enhancedWeatherPrediction.weatherIcon} Enhanced Weather Forecast</h3>
+            <div className="prediction-content">
+              <div className="main-prediction">
+                <strong>{enhancedWeatherPrediction.prediction}</strong>
+                <span className={`confidence-badge ${enhancedWeatherPrediction.confidence}`}>
+                  {enhancedWeatherPrediction.confidence.toUpperCase()} CONFIDENCE
+                </span>
+              </div>
+              <div className="prediction-details">
+                <p><strong>Analysis:</strong> {enhancedWeatherPrediction.reasoning}</p>
+                <div className="metrics-grid">
+                  <div className="metric-group">
+                    <h4>📊 Temperature Volatility (σ)</h4>
+                    <span>Current: <strong>{enhancedWeatherPrediction.metrics.currentStdDev}°C</strong></span>
+                    <span>5-day avg: <strong>{enhancedWeatherPrediction.metrics.avgStdDev}°C</strong></span>
+                    <span>Trend: <strong>{enhancedWeatherPrediction.metrics.stdDevSlope > 0 ? '+' : ''}{enhancedWeatherPrediction.metrics.stdDevSlope}°C/day</strong></span>
+                  </div>
+                  <div className="metric-group">
+                    <h4>📈 Daily Range</h4>
+                    <span>Current: <strong>{enhancedWeatherPrediction.metrics.currentRange}°C</strong></span>
+                    <span>5-day avg: <strong>{enhancedWeatherPrediction.metrics.avgRange}°C</strong></span>
+                    <span>Trend: <strong>{enhancedWeatherPrediction.metrics.rangeSlope > 0 ? '+' : ''}{enhancedWeatherPrediction.metrics.rangeSlope}°C/day</strong></span>
+                  </div>
+                </div>
+                <div className="forecast-interpretation">
+                  <p><strong>What this means:</strong></p>
+                  <ul>
+                    <li>Low volatility + High range = Clear skies, stable weather ☀️</li>
+                    <li>Low volatility + Low range = Overcast but stable ☁️</li>
+                    <li>High volatility = Unstable weather or weather system approaching ⚠️</li>
+                    <li>Increasing volatility = Weather change likely 🌧️</li>
+                    <li>Decreasing volatility = Weather stabilizing 🌤️</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -964,6 +1209,55 @@ const App: React.FC = () => {
               !loading && (
                 <div className="no-data">
                   No min/max data available
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="chart-container">
+            <h3>24-Hour Rolling Standard Deviation</h3>
+            <p style={{ fontSize: '12px', color: '#666', marginTop: '0', marginBottom: '10px' }}>
+              Shows temperature variability over the past 24 hours. Higher values indicate more unstable weather.
+            </p>
+            {standardDeviationData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={standardDeviationData}
+                  margin={{
+                    top: 5,
+                    right: 15,
+                    left: 5,
+                    bottom: 5,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey={getXAxisDataKey()} 
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    label={{ value: 'Std Deviation (°C)', angle: -90, position: 'insideLeft' }}
+                    tick={{ fontSize: 12 }}
+                    domain={[0, 'dataMax + 0.5']}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="temperature" 
+                    stroke="#82ca9d" 
+                    strokeWidth={3}
+                    dot={false}
+                    activeDot={{ r: 6 }}
+                    name="24h Standard Deviation"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              !loading && (
+                <div className="no-data">
+                  No standard deviation data available
                 </div>
               )
             )}
